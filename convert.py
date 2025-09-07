@@ -28,12 +28,12 @@
 #
 # A) For Local Development:
 #    Simply run this file directly from your terminal.
-#    python app.py
+#    python convert.py
 #
 # B) For Production (e.g., on Render):
 #    Use Gunicorn to start the server. This is the command you would use
 #    in a hosting service's "Start Command" field.
-#    gunicorn --bind 0.0.0.0:$PORT app:app
+#    gunicorn --bind 0.0.0.0:$PORT convert:app
 #    (Render provides the $PORT variable automatically)
 # ==============================================================================
 
@@ -623,4 +623,3 @@ if __name__ == '__main__':
         print("         variables not set. The bug report feature will not work.")
         print("="*60)
     app.run(debug=True)
-
