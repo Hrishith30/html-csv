@@ -1,3 +1,42 @@
+# ==============================================================================
+# UNIVERSAL DATA CONVERTER - SINGLE FILE DEPLOYMENT
+# ==============================================================================
+# This single Python file contains the complete Flask application, including
+# the HTML, CSS, and JavaScript for the frontend.
+
+# --- 1. INSTALL DEPENDENCIES ---
+# Before running, you must install the required Python packages. Open your
+# terminal and run the following commands:
+#
+# pip install Flask pandas gunicorn
+#
+
+# --- 2. SET ENVIRONMENT VARIABLES (for Bug Report Feature) ---
+# To enable the email bug report feature, you must set your Gmail address
+# and a Google App Password as environment variables.
+#
+# On macOS/Linux:
+# export GMAIL_EMAIL="your-email@gmail.com"
+# export GMAIL_APP_PASSWORD="your-16-character-app-password"
+#
+# On Windows (Command Prompt):
+# set GMAIL_EMAIL="your-email@gmail.com"
+# set GMAIL_APP_PASSWORD="your-16-character-app-password"
+#
+
+# --- 3. HOW TO RUN ---
+#
+# A) For Local Development:
+#    Simply run this file directly from your terminal.
+#    python app.py
+#
+# B) For Production (e.g., on Render):
+#    Use Gunicorn to start the server. This is the command you would use
+#    in a hosting service's "Start Command" field.
+#    gunicorn --bind 0.0.0.0:$PORT app:app
+#    (Render provides the $PORT variable automatically)
+# ==============================================================================
+
 from flask import Flask, request, render_template_string, send_file, jsonify
 import pandas as pd
 import json
@@ -66,6 +105,7 @@ HTML_TEMPLATE = '''
         </div>
 
         <div class="tab-content" id="main-tab-content">
+            <!-- JSON to CSV Converter Pane -->
             <div class="tab-pane fade show active" id="json-to-csv-pane" role="tabpanel">
                 <div class="card-body p-4">
                     <ul class="nav nav-tabs nav-fill mb-3">
@@ -114,6 +154,7 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
+            <!-- CSV to JSON Converter Pane -->
             <div class="tab-pane fade" id="csv-to-json-pane" role="tabpanel">
                  <div class="card-body p-4">
                     <ul class="nav nav-tabs nav-fill mb-3">
@@ -450,11 +491,8 @@ document.addEventListener('DOMContentLoaded', () => {
 FILE_STORE = {}
 
 # --- Email Configuration ---
-# IMPORTANT: These are loaded from environment variables for security.
 SENDER_EMAIL = os.environ.get('GMAIL_EMAIL')
 SENDER_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
-# This is the email address that will receive the bug reports.
-# By default, it sends to itself. You can change this to a different address.
 RECIPIENT_EMAIL = SENDER_EMAIL
 
 @app.route('/')
@@ -577,6 +615,7 @@ def download_file(file_id):
         mimetype=mimetype
     )
 
+# The following block is for local development only.
 if __name__ == '__main__':
     if not SENDER_EMAIL or not SENDER_APP_PASSWORD:
         print("="*60)
@@ -584,3 +623,4 @@ if __name__ == '__main__':
         print("         variables not set. The bug report feature will not work.")
         print("="*60)
     app.run(debug=True)
+
