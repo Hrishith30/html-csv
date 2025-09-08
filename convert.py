@@ -1,53 +1,18 @@
-# ==============================================================================
-# UNIVERSAL DATA CONVERTER - SINGLE FILE DEPLOYMENT
-# ==============================================================================
-# This single Python file contains the complete Flask application, including
-# the HTML, CSS, and JavaScript for the frontend.
+# convert.py (Rewritten for Stateless Deployment)
 
-# --- 1. INSTALL DEPENDENCIES ---
-# Before running, you must install the required Python packages. Open your
-# terminal and run the following commands:
-#
-# pip install Flask pandas gunicorn
-#
-
-# --- 2. SET ENVIRONMENT VARIABLES (for Bug Report Feature) ---
-# To enable the email bug report feature, you must set your Gmail address
-# and a Google App Password as environment variables.
-#
-# On macOS/Linux:
-# export GMAIL_EMAIL="your-email@gmail.com"
-# export GMAIL_APP_PASSWORD="your-16-character-app-password"
-#
-# On Windows (Command Prompt):
-# set GMAIL_EMAIL="your-email@gmail.com"
-# set GMAIL_APP_PASSWORD="your-16-character-app-password"
-#
-
-# --- 3. HOW TO RUN ---
-#
-# A) For Local Development:
-#    Simply run this file directly from your terminal.
-#    python convert.py
-#
-# B) For Production (e.g., on Render):
-#    Use Gunicorn to start the server. This is the command you would use
-#    in a hosting service's "Start Command" field.
-#    gunicorn --bind 0.0.0.0:$PORT convert:app
-#    (Render provides the $PORT variable automatically)
-# ==============================================================================
-
-from flask import Flask, request, render_template_string, send_file, jsonify
+from flask import Flask, request, render_template_string, jsonify
 import pandas as pd
 import json
 from io import BytesIO, StringIO
-import uuid
 import os
 import smtplib
 from email.message import EmailMessage
+import base64 # <-- ADDED: For encoding file data into the download link
 
 app = Flask(__name__)
 
+# The HTML_TEMPLATE now includes a small but crucial change in the JavaScript
+# to handle the download attribute for the CSV file.
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -105,7 +70,6 @@ HTML_TEMPLATE = '''
         </div>
 
         <div class="tab-content" id="main-tab-content">
-            <!-- JSON to CSV Converter Pane -->
             <div class="tab-pane fade show active" id="json-to-csv-pane" role="tabpanel">
                 <div class="card-body p-4">
                     <ul class="nav nav-tabs nav-fill mb-3">
@@ -154,7 +118,6 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- CSV to JSON Converter Pane -->
             <div class="tab-pane fade" id="csv-to-json-pane" role="tabpanel">
                  <div class="card-body p-4">
                     <ul class="nav nav-tabs nav-fill mb-3">
@@ -287,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const resetFileUI = () => {
             fileInput.value = '';
             fileInfo.style.display = 'none';
-            dropZone.innerHTML = `<div class="icon"><i class="bi bi-cloud-arrow-up-fill"></i></div><p class="mb-0 mt-2"><strong>Drag & Drop</strong> a ${type.toUpperCase()} file here or <strong>click to select</strong></p>`;
+            dropZone.innerHTML = `<div class="icon"><i class="bi bi-cloud-arrow-up-fill"></i></div><p class="mb-0 mt-2"><strong>Drag & Drop</strong> a ${type.toUpperCase().substring(2)} file here or <strong>click to select</strong></p>`;
         };
         const handleFileSelection = (file) => {
             if (!file) return;
@@ -383,7 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
             if (!response.ok) throw new Error(result.error);
             displayStats(result, 'j2c-stats-body');
-            document.getElementById('j2c-download-btn').href = result.csv_url;
+            
+            // --- JAVASCRIPT MODIFICATION ---
+            const downloadBtn = document.getElementById('j2c-download-btn');
+            downloadBtn.href = result.csv_url;
+            downloadBtn.download = result.download_name; // Set filename for download
+            
             renderJ2CTable(result.preview_columns, result.preview_data);
             resultsArea.style.display = 'block';
         } catch (error) {
@@ -487,10 +455,11 @@ document.addEventListener('DOMContentLoaded', () => {
 </html>
 '''
 
-# In-memory store for generated files.
-FILE_STORE = {}
+# --- DELETED ---
+# The in-memory FILE_STORE is no longer needed.
 
 # --- Email Configuration ---
+# These should be set as environment variables on your deployment platform (e.g., Render)
 SENDER_EMAIL = os.environ.get('GMAIL_EMAIL')
 SENDER_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
 RECIPIENT_EMAIL = SENDER_EMAIL
@@ -557,15 +526,25 @@ def convert_to_csv():
         "dtypes": df.dtypes.apply(lambda x: str(x)).to_dict(),
         "non_null_counts": df.count().to_dict()
     }
-    csv_buf = BytesIO()
+    
+    # --- MODIFIED LOGIC ---
+    # Convert dataframe to a CSV string in memory
+    csv_buf = StringIO()
     df.to_csv(csv_buf, index=False)
-    file_id = str(uuid.uuid4())
+    csv_string = csv_buf.getvalue()
+    
+    # Encode the string to Base64 and create a Data URI
+    b64_encoded = base64.b64encode(csv_string.encode('utf-8')).decode('utf-8')
+    csv_url = f"data:text/csv;base64,{b64_encoded}"
+    
+    # Determine the download filename
     file_name = (file.filename.rsplit('.', 1)[0] + '.csv') if file.filename else 'data.csv'
-    FILE_STORE[file_id] = (csv_buf.getvalue(), file_name, 'text/csv')
+
     return jsonify({
         "preview_data": df.head(10).fillna('null').to_dict(orient='records'),
         "preview_columns": list(df.columns),
-        "csv_url": f"/download/{file_id}",
+        "csv_url": csv_url,         # <-- MODIFIED: Send the Data URI
+        "download_name": file_name, # <-- ADDED: Send the filename for the download attribute
         "total_rows": len(df),
         "stats": stats
     })
@@ -592,30 +571,28 @@ def convert_to_json():
     df_clean = df.replace({pd.NA: None, pd.NaT: None}).where(pd.notna(df), None)
     json_data = json.loads(df_clean.to_json(orient='records', date_format='iso'))
     json_string = json.dumps(json_data, indent=2)
-    file_id = str(uuid.uuid4())
+
+    # --- MODIFIED LOGIC ---
+    # Encode the JSON string to Base64 and create a Data URI
+    b64_encoded = base64.b64encode(json_string.encode('utf-8')).decode('utf-8')
+    json_url = f"data:application/json;base64,{b64_encoded}"
+
+    # Determine the download filename
     file_name = (file.filename.rsplit('.', 1)[0] + '.json') if file.filename else 'data.json'
-    FILE_STORE[file_id] = (json_string.encode('utf-8'), file_name, 'application/json')
+    
     return jsonify({
         "json_data": json_data,
-        "json_url": f"/download/{file_id}",
+        "json_url": json_url, # <-- MODIFIED: Send the Data URI
         "json_name": file_name,
         "total_rows": len(df),
         "stats": stats
     })
 
-@app.route('/download/<file_id>')
-def download_file(file_id):
-    if file_id not in FILE_STORE:
-        return "File not found or has expired.", 404
-    file_data, file_name, mimetype = FILE_STORE.pop(file_id)
-    return send_file(
-        BytesIO(file_data),
-        as_attachment=True,
-        download_name=file_name,
-        mimetype=mimetype
-    )
+# --- DELETED ---
+# The /download/<file_id> route is no longer needed because the file data
+# is now embedded directly in the link provided to the frontend.
 
-# The following block is for local development only.
+# This block is for local development. On Render, Gunicorn will run the 'app' object.
 if __name__ == '__main__':
     if not SENDER_EMAIL or not SENDER_APP_PASSWORD:
         print("="*60)
